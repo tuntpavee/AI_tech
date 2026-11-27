@@ -1,117 +1,111 @@
-# Flirt Detection with Naive Bayes (built from scratch)
+# Sentiment Classifier with Naive Bayes (built from scratch)
 
-An AI Tech final project that classifies chat messages as **flirty (1)** or **not flirty (0)**, using a **Multinomial Naive Bayes classifier written from scratch in NumPy**. To check that the from-scratch model is correct, it is compared against scikit-learn's `MultinomialNB` on the same data.
+An AI Tech final project that decides whether a sentence is **positive** or **negative**, using a **Naive Bayes classifier written by hand in plain Python**. Word counting, vocabulary building, priors and likelihoods are all implemented manually; scikit-learn is only used to split the data and report the results.
 
-The project also includes a simpler warm-up: a from-scratch Naive Bayes for **positive / negative sentiment**.
-
----
-
-## Results
-
-| Model | Task | Test accuracy |
-|---|---|---|
-| **Custom `MultinomialNaiveBayes`** (α = 10) | Flirt detection | **72.5%** |
-| scikit-learn `MultinomialNB` (α = 10) | Flirt detection | 71.8% |
-| Word-count Naive Bayes (`main.ipynb`) | Sentiment | 100% (14 / 14) |
-
-The custom model learns the same feature counts and class priors as scikit-learn, and its accuracy is almost the same, so the from-scratch maths is right. The 100% sentiment score comes from a very small hand-written dataset, so it doesn't mean the model would do that well on real text.
+The main code is in [`main.ipynb`](main.ipynb).
 
 ---
 
-## Notebooks
+## Example
 
-| File | What it does |
-|---|---|
-| [`earth.ipynb`](earth.ipynb) | **Main project:** text cleaning, class balancing, TF-IDF, then custom Naive Bayes vs scikit-learn on the flirt dataset |
-| [`main.ipynb`](main.ipynb) | Warm-up: sentiment classifier with hand-written word counts, likelihoods and priors, plus an interactive "type a sentence" prediction and a confusion matrix |
-| [`model.ipynb`](model.ipynb) | Early draft of the `MultinomialNaiveBayes` class |
-| [`data.csv`](data.csv) | Dataset of chat messages: `label` (1 = flirty, 0 = not flirty), `text` |
-| [`slang.json`](slang.json) | Slang dictionary used during cleaning (e.g. `u → you`, `idk → i do not know`) |
+```
+Enter the prediction line: Major fail. You really dropped the ball on this one
+
+Positive Score: 5.43e-24
+Negative Score: 2.16e-23
+Prediction: negative
+```
 
 ---
 
 ## Dataset
 
-`data.csv` has about **5,000 messages**:
+A small hand-written dataset of **46 sentences** (23 positive, 23 negative), stored in the notebook. Many sentences are deliberately tricky: they mix positive and negative words, like:
 
-| Label | Meaning | Count |
+| Class | Sentence |
+|---|---|
+| positive | *"I thought this was going to be bad but you are actually doing a wonderful job"* |
+| positive | *"You are not stupid at all you are actually brilliant and amazing"* |
+| negative | *"You might think you look good but you actually look so bad"* |
+| negative | *"I expected a handsome guy but you are just a gross disappointment"* |
+
+The data is split **70 / 30** into training and testing sets (`random_state=42`), which gives 14 test sentences.
+
+---
+
+## How it works
+
+### 1. Build the vocabulary
+
+Every sentence is split into words and lower-cased. `vocabuary()` collects each unique word once.
+
+### 2. Count words per class
+
+`word_count()` counts how many times each vocabulary word appears in the positive and in the negative sentences.
+
+### 3. Prior probability
+
+How common each class is (`prior_probability()`):
+
+```
+P(positive) = positive sentences / all sentences
+P(negative) = negative sentences / all sentences
+```
+
+### 4. Likelihood with Laplace smoothing
+
+How likely each word is inside a class (`likelyhood()`), with smoothing α = 1 so unseen words don't give a probability of 0:
+
+```
+P(word | class) = (count of word in class + α) / (total words in class + vocabulary size)
+```
+
+### 5. Predict
+
+Start from the prior and multiply in the likelihood of every known word in the sentence:
+
+```
+score(class) = P(class) × Π P(word | class)
+```
+
+The class with the higher score wins. If the scores are equal, the result is *"indescribable"*.
+
+---
+
+## Results
+
+| Metric | Positive | Negative |
 |---|---|---|
-| `0` | Not flirty | 3,421 |
-| `1` | Flirty | 1,558 |
+| Precision | 1.00 | 1.00 |
+| Recall | 1.00 | 1.00 |
+| Test sentences | 5 | 9 |
 
-Before training, empty rows and duplicate messages are removed. The not-flirty class is then **randomly undersampled** so both classes have the same number of messages, which stops the model from just predicting the bigger class.
+**Accuracy: 100% (14 / 14)**, shown in a confusion matrix plotted with seaborn.
 
----
-
-## Pipeline (`earth.ipynb`)
-
-```
-raw message
-   │
-   ├─ 1. lowercase + expand contractions      ("don't" → "do not")
-   ├─ 2. put spaces around punctuation       (keeps "!" ";)" as their own tokens)
-   ├─ 3. remove English stopwords
-   ├─ 4. flag elongated words                ("heyyyy" → "hey _elongated")
-   ├─ 5. replace slang + flag it             ("u" → "you _slang")
-   └─ 6. lemmatize verbs                     ("matched" → "match")
-   │
-TF-IDF vectorizer → 80/20 train-test split → Naive Bayes
-```
-
-Steps 4 and 5 add extra marker tokens (`_elongated`, `_slang`), because stretched-out words and casual slang can be signs of flirty messages.
-
----
-
-## How the from-scratch Naive Bayes works
-
-For each class `y`, the model learns:
-
-**Prior:** how common the class is
-
-```
-P(y) = (number of messages in class y) / (total messages)
-```
-
-**Likelihood of each word (with Laplace smoothing α):**
-
-```
-θ_yi = (N_yi + α) / (N_y + α · n_features)
-```
-
-- `N_yi`: total weight of word `i` in class `y`
-- `N_y`: total weight of all words in class `y`
-
-**Prediction:** pick the class with the highest posterior
-
-```
-P(y | x) ∝ P(y) · Π_i θ_yi ^ x_i
-```
-
-The scores are normalised so the two classes add up to 1, which gives the `predict_proba` values.
-
-The `pipeline()` function trains both scikit-learn's model and the custom one with the same α and prints their feature counts, log priors and accuracy side by side.
+> **Note:** the word counts are built from all 46 sentences, including the 14 test sentences, so the model has already seen the test data. Counting words from `X_train` only would give a fairer accuracy.
 
 ---
 
 ## Getting started
 
 ```bash
-pip install numpy pandas scikit-learn matplotlib seaborn nltk contractions jupyter
-python -m nltk.downloader stopwords wordnet
+pip install numpy scikit-learn matplotlib seaborn jupyter
+jupyter notebook main.ipynb
 ```
 
-Then open the main notebook and run all cells:
-
-```bash
-jupyter notebook earth.ipynb
-```
-
-`main.ipynb` asks you to type a sentence and tells you whether it's positive or negative.
+Run all cells. The prediction cell asks you to type a sentence and prints the positive and negative scores and the predicted class.
 
 ---
 
 ## Possible improvements
 
-- Use log-probabilities instead of multiplying many small numbers. That avoids the overflow / divide-by-zero warnings and fits long messages better.
-- Try different α values and n-grams, or combine word counts with TF-IDF.
-- Collect more flirty examples instead of throwing away not-flirty ones to balance the classes.
+- Build the vocabulary and word counts from the training set only (see the note above).
+- `negative_wordcount` counts words from `neg_class` (original casing) instead of `neg_vocab` (lower-cased), so capitalised words like "You" are counted differently between the classes.
+- Add up log-probabilities instead of multiplying, so long sentences don't produce tiny numbers that round to 0.
+- Remove punctuation (e.g. `"fail."` and `"fail"` are currently different words) and collect more data.
+
+---
+
+## Other files in this folder
+
+`earth.ipynb`, `model.ipynb`, `data.csv` and `slang.json` are a friend's related project: a flirt / not-flirt message classifier that compares a from-scratch Multinomial Naive Bayes with scikit-learn's.
